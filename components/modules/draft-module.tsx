@@ -1,24 +1,12 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
-import { Plus, Search, FileText, Trash2, MoreVertical, Save, Clock, Eye, EyeOff, Copy, Download } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog"
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu"
+import { Search, Trash2, Eye, EyeOff, X, Plus, XCircle } from "lucide-react"
 
 interface Draft {
   id: string
@@ -26,25 +14,27 @@ interface Draft {
   content: string
   createdAt: Date
   updatedAt: Date
-  wordCount: number
 }
 
 export function DraftModule() {
   const [drafts, setDrafts] = useState<Draft[]>([])
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedDraft, setSelectedDraft] = useState<Draft | null>(null)
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
-  const [isEditing, setIsEditing] = useState(false)
-  const [newDraftTitle, setNewDraftTitle] = useState("")
-  const [editingContent, setEditingContent] = useState("")
-  const [autoSaveStatus, setAutoSaveStatus] = useState<"saved" | "saving" | "unsaved">("saved")
+  const [currentDraft, setCurrentDraft] = useState<Draft | null>(null)
+  const [sidebarVisible, setSidebarVisible] = useState(true)
+  const [showRecycleBin, setShowRecycleBin] = useState(false)
+  const [recycleBinDrafts, setRecycleBinDrafts] = useState<Draft[]>([])
+  const [recycleBinSearch, setRecycleBinSearch] = useState("")
   const [showPreview, setShowPreview] = useState(false)
+  const [editingContent, setEditingContent] = useState("")
+  const [previewDraft, setPreviewDraft] = useState<Draft | null>(null)
 
-  const autoSaveTimeoutRef = useRef<NodeJS.Timeout>()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
+  // 初始化数据
   useEffect(() => {
     const savedDrafts = localStorage.getItem("drafts")
+    const savedRecycleBin = localStorage.getItem("recycleBinDrafts")
+    
     if (savedDrafts) {
       const parsedDrafts = JSON.parse(savedDrafts).map((draft: any) => ({
         ...draft,
@@ -52,180 +42,212 @@ export function DraftModule() {
         updatedAt: new Date(draft.updatedAt),
       }))
       setDrafts(parsedDrafts)
+      
+      // 如果有草稿，自动选择第一个
+      if (parsedDrafts.length > 0) {
+        setCurrentDraft(parsedDrafts[0])
+        setEditingContent(parsedDrafts[0].content)
+      }
     } else {
-      // 初始化示例数据
-      const sampleDrafts: Draft[] = [
-        {
-          id: "1",
-          title: "产品设计思考",
-          content: `# 产品设计的核心原则
+      // 创建默认草稿
+      const defaultDraft: Draft = {
+        id: Date.now().toString(),
+        title: "新稿纸",
+        content: "",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }
+      setDrafts([defaultDraft])
+      setCurrentDraft(defaultDraft)
+      setEditingContent("")
+      localStorage.setItem("drafts", JSON.stringify([defaultDraft]))
+    }
+    
+    // 确保有可编辑的稿纸
+    if (drafts.length > 0) {
+      ensureEditableDraft()
+    }
 
-## 用户体验优先
-在设计任何产品时，我们都应该将用户体验放在首位。这意味着：
-
-1. 深入了解用户需求
-2. 简化操作流程
-3. 提供清晰的反馈
-
-## 简约而不简单
-好的设计应该是简约的，但不能过于简单而失去功能性。我们需要在简洁和功能之间找到平衡。
-
-## 一致性原则
-保持设计的一致性能够：
-- 降低用户的学习成本
-- 提高产品的专业感
-- 增强用户信任
-
-这些原则将指导我们创造出更好的产品。`,
-          createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
-          updatedAt: new Date(Date.now() - 30 * 60 * 1000),
-          wordCount: 156,
-        },
-        {
-          id: "2",
-          title: "会议记录 - 项目讨论",
-          content: `会议时间：2024年1月15日 14:00-15:30
-参与人员：张三、李四、王五
-
-## 讨论要点
-
-### 项目进度
-- 前端开发已完成80%
-- 后端API开发进度70%
-- 测试用例编写50%
-
-### 遇到的问题
-1. 第三方API集成遇到技术难题
-2. 移动端适配需要更多时间
-3. 性能优化还需要进一步调整
-
-### 下一步计划
-- 本周完成API集成
-- 下周开始全面测试
-- 预计月底可以发布测试版本
-
-## 行动项
-- [ ] 张三：解决API集成问题
-- [ ] 李四：完成移动端适配
-- [ ] 王五：准备测试环境`,
-          createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
-          updatedAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
-          wordCount: 203,
-        },
-      ]
-      setDrafts(sampleDrafts)
-      localStorage.setItem("drafts", JSON.stringify(sampleDrafts))
+    if (savedRecycleBin) {
+      const parsedRecycleBin = JSON.parse(savedRecycleBin).map((draft: any) => ({
+        ...draft,
+        createdAt: new Date(draft.createdAt),
+        updatedAt: new Date(draft.updatedAt),
+      }))
+      setRecycleBinDrafts(parsedRecycleBin)
     }
   }, [])
 
+  // 保存草稿到localStorage
   const saveDrafts = (updatedDrafts: Draft[]) => {
     setDrafts(updatedDrafts)
     localStorage.setItem("drafts", JSON.stringify(updatedDrafts))
   }
 
-  const createDraft = () => {
-    if (!newDraftTitle.trim()) return
+  // 保存回收站到localStorage
+  const saveRecycleBin = (updatedRecycleBin: Draft[]) => {
+    setRecycleBinDrafts(updatedRecycleBin)
+    localStorage.setItem("recycleBinDrafts", JSON.stringify(updatedRecycleBin))
+  }
 
+  // 创建新稿纸
+  const createNewDraft = () => {
     const newDraft: Draft = {
       id: Date.now().toString(),
-      title: newDraftTitle.trim(),
+      title: `新稿纸 ${drafts.length + 1}`,
       content: "",
       createdAt: new Date(),
       updatedAt: new Date(),
-      wordCount: 0,
     }
-
+    
     const updatedDrafts = [newDraft, ...drafts]
     saveDrafts(updatedDrafts)
-    setNewDraftTitle("")
-    setIsCreateDialogOpen(false)
-    setSelectedDraft(newDraft)
-    setIsEditing(true)
+    setCurrentDraft(newDraft)
     setEditingContent("")
+    
+    // 聚焦到编辑器并清空内容
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.value = ""
+        textareaRef.current.focus()
+      }
+    }, 100)
   }
 
-  const deleteDraft = (draftId: string) => {
-    const updatedDrafts = drafts.filter((draft) => draft.id !== draftId)
-    saveDrafts(updatedDrafts)
-    if (selectedDraft?.id === draftId) {
-      setSelectedDraft(null)
-      setIsEditing(false)
-    }
-  }
-
-  const autoSave = (content: string) => {
-    if (!selectedDraft) return
-
-    setAutoSaveStatus("saving")
-
-    if (autoSaveTimeoutRef.current) {
-      clearTimeout(autoSaveTimeoutRef.current)
-    }
-
-    autoSaveTimeoutRef.current = setTimeout(() => {
-      const wordCount = content
-        .trim()
-        .split(/\s+/)
-        .filter((word) => word.length > 0).length
-      const updatedDrafts = drafts.map((draft) =>
-        draft.id === selectedDraft.id
-          ? {
-              ...draft,
-              content,
-              updatedAt: new Date(),
-              wordCount,
-            }
-          : draft,
-      )
+  // 删除稿纸
+  const deleteDraft = () => {
+    if (!currentDraft) return
+    
+    if (currentDraft.content.trim()) {
+      // 有内容的稿纸移到回收站
+      const updatedDrafts = drafts.filter(draft => draft.id !== currentDraft.id)
+      const updatedRecycleBin = [currentDraft, ...recycleBinDrafts]
+      
       saveDrafts(updatedDrafts)
-      setSelectedDraft((prev) => (prev ? { ...prev, content, wordCount, updatedAt: new Date() } : null))
-      setAutoSaveStatus("saved")
-    }, 1000)
+      saveRecycleBin(updatedRecycleBin)
+    } else {
+      // 空白稿纸直接永久删除
+      const updatedDrafts = drafts.filter(draft => draft.id !== currentDraft.id)
+      saveDrafts(updatedDrafts)
+    }
+    
+    // 确保有可编辑的稿纸
+    ensureEditableDraft()
   }
 
+  // 从列表删除稿纸（边栏右键菜单使用）
+  const deleteDraftFromList = (draft: Draft) => {
+    if (draft.content.trim()) {
+      // 有内容的稿纸移到回收站
+      const updatedDrafts = drafts.filter(d => d.id !== draft.id)
+      const updatedRecycleBin = [draft, ...recycleBinDrafts]
+      
+      saveDrafts(updatedDrafts)
+      saveRecycleBin(updatedRecycleBin)
+    } else {
+      // 空白稿纸直接永久删除
+      const updatedDrafts = drafts.filter(d => d.id !== draft.id)
+      saveDrafts(updatedDrafts)
+    }
+    
+    // 如果删除的是当前编辑的稿纸，确保有可编辑的稿纸
+    if (currentDraft?.id === draft.id) {
+      ensureEditableDraft()
+    }
+  }
+
+  // 预览回收站中的稿纸
+  const previewRecycleBinDraft = (draft: Draft) => {
+    setPreviewDraft(draft)
+  }
+
+  // 确保有可编辑的稿纸
+  const ensureEditableDraft = () => {
+    const remainingDrafts = drafts.filter(draft => draft.id !== currentDraft?.id)
+    
+    // 查找空白稿纸
+    const blankDraft = remainingDrafts.find(draft => !draft.content.trim())
+    
+    if (blankDraft) {
+      // 复用空白稿纸
+      setCurrentDraft(blankDraft)
+      setEditingContent("")
+      
+      // 设置textarea的内容
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.value = ""
+        }
+      }, 0)
+    } else {
+      // 没有空白稿纸，创建新的
+      createNewDraft()
+    }
+  }
+
+  // 从回收站恢复稿纸
+  const restoreDraft = (draft: Draft) => {
+    const updatedRecycleBin = recycleBinDrafts.filter(d => d.id !== draft.id)
+    const updatedDrafts = [draft, ...drafts]
+    
+    saveRecycleBin(updatedRecycleBin)
+    saveDrafts(updatedDrafts)
+    setCurrentDraft(draft)
+    setEditingContent(draft.content)
+  }
+
+  // 永久删除回收站中的稿纸
+  const permanentlyDeleteDraft = (draft: Draft) => {
+    const updatedRecycleBin = recycleBinDrafts.filter(d => d.id !== draft.id)
+    saveRecycleBin(updatedRecycleBin)
+  }
+
+  // 自动保存
+  const autoSave = (content: string) => {
+    if (!currentDraft) return
+    
+    const updatedDraft = { ...currentDraft, content, updatedAt: new Date() }
+    const updatedDrafts = drafts.map(draft => 
+      draft.id === currentDraft.id ? updatedDraft : draft
+    )
+    
+    saveDrafts(updatedDrafts)
+    setCurrentDraft(updatedDraft)
+  }
+
+  // 处理内容变化
   const handleContentChange = (content: string) => {
     setEditingContent(content)
-    setAutoSaveStatus("unsaved")
     autoSave(content)
   }
 
-  const startEditing = (draft: Draft) => {
-    setSelectedDraft(draft)
+  // 选择稿纸
+  const selectDraft = (draft: Draft) => {
+    setCurrentDraft(draft)
     setEditingContent(draft.content)
-    setIsEditing(true)
     setShowPreview(false)
+    
+    // 设置textarea的内容
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.value = draft.content
+      }
+    }, 0)
   }
 
-  const stopEditing = () => {
-    setIsEditing(false)
-    setShowPreview(false)
-  }
-
-  const copyToClipboard = async (content: string) => {
-    try {
-      await navigator.clipboard.writeText(content)
-      // 这里可以添加一个toast通知
-    } catch (err) {
-      console.error("复制失败:", err)
-    }
-  }
-
-  const downloadDraft = (draft: Draft) => {
-    const element = document.createElement("a")
-    const file = new Blob([draft.content], { type: "text/plain" })
-    element.href = URL.createObjectURL(file)
-    element.download = `${draft.title}.txt`
-    document.body.appendChild(element)
-    element.click()
-    document.body.removeChild(element)
-  }
-
-  const filteredDrafts = drafts.filter(
-    (draft) =>
-      draft.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      draft.content.toLowerCase().includes(searchQuery.toLowerCase()),
+  // 过滤稿纸列表
+  const filteredDrafts = drafts.filter(draft =>
+    draft.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    draft.content.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
+  // 过滤回收站稿纸
+  const filteredRecycleBinDrafts = recycleBinDrafts.filter(draft =>
+    draft.title.toLowerCase().includes(recycleBinSearch.toLowerCase()) ||
+    draft.content.toLowerCase().includes(recycleBinSearch.toLowerCase())
+  )
+
+  // 格式化时间
   const formatTime = (date: Date) => {
     const now = new Date()
     const diff = now.getTime() - date.getTime()
@@ -239,7 +261,8 @@ export function DraftModule() {
     return date.toLocaleDateString("zh-CN")
   }
 
-  const renderPreview = (content: string) => {
+  // 渲染Markdown预览
+  const renderMarkdown = (content: string) => {
     return content.split("\n").map((line, index) => {
       if (line.startsWith("# ")) {
         return (
@@ -288,241 +311,274 @@ export function DraftModule() {
   }
 
   return (
-    <div className="h-[calc(100vh-12rem)] flex flex-col space-y-6">
-      {/* 头部区域 */}
-      <div className="flex flex-col space-y-4">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-foreground mb-2">草稿纸</h2>
-          <p className="text-muted-foreground">自由创作的空间</p>
-        </div>
-
-        {/* 操作栏 */}
-        <div className="flex flex-col sm:flex-row gap-4">
+    <div className="h-[calc(100vh-12rem)] flex gap-6 p-6">
+      {/* 左侧边栏卡片 */}
+      {sidebarVisible && (
+        <div className="w-80 bg-card rounded-lg shadow-sm border border-border flex flex-col">
           {/* 搜索框 */}
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="搜索草稿..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
+          <div className="p-4 border-b border-border">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="搜索稿纸..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 pr-8"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1 hover:bg-accent hover:text-accent-foreground rounded-sm transition-colors cursor-pointer"
+                >
+                  <XCircle className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* 创建按钮 */}
-          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="flex items-center space-x-2">
-                <Plus className="w-4 h-4" />
-                <span>新建草稿</span>
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle>创建新草稿</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <Input
-                  placeholder="草稿标题"
-                  value={newDraftTitle}
-                  onChange={(e) => setNewDraftTitle(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && createDraft()}
-                />
-                <div className="flex justify-end space-x-2">
-                  <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                    取消
-                  </Button>
-                  <Button onClick={createDraft} disabled={!newDraftTitle.trim()}>
-                    创建
-                  </Button>
-                </div>
+          {/* 稿纸列表 */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-2">
+            {filteredDrafts.length === 0 ? (
+              <div className="text-center text-muted-foreground py-8">
+                {searchQuery ? "没有找到匹配的稿纸" : "还没有稿纸"}
               </div>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
-
-      {/* 主要内容区域 */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-0">
-        {/* 草稿列表 */}
-        <div className="lg:col-span-1 space-y-4 overflow-y-auto">
-          {filteredDrafts.length === 0 ? (
-            <Card className="text-center py-8">
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="w-12 h-12 mx-auto bg-muted rounded-full flex items-center justify-center">
-                    <FileText className="w-6 h-6 text-muted-foreground" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-medium text-foreground mb-2">
-                      {searchQuery ? "没有找到匹配的草稿" : "还没有草稿"}
-                    </h3>
-                    <p className="text-muted-foreground text-sm">
-                      {searchQuery ? "尝试调整搜索条件" : "点击上方按钮创建你的第一个草稿"}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="space-y-3">
-              {filteredDrafts.map((draft) => (
-                <Card
-                  key={draft.id}
-                  className={`cursor-pointer hover:shadow-md transition-all ${
-                    selectedDraft?.id === draft.id ? "ring-2 ring-primary" : ""
-                  }`}
-                  onClick={() => startEditing(draft)}
-                >
-                  <CardContent className="pt-4">
-                    <div className="space-y-3">
-                      <div className="flex items-start justify-between">
-                        <h3 className="font-medium text-foreground truncate flex-1">{draft.title}</h3>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                              <MoreVertical className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => copyToClipboard(draft.content)}>
-                              <Copy className="w-4 h-4 mr-2" />
-                              复制内容
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => downloadDraft(draft)}>
-                              <Download className="w-4 h-4 mr-2" />
-                              下载
-                            </DropdownMenuItem>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <DropdownMenuItem
-                                  onSelect={(e) => e.preventDefault()}
-                                  className="text-destructive focus:text-destructive"
-                                >
-                                  <Trash2 className="w-4 h-4 mr-2" />
-                                  删除
-                                </DropdownMenuItem>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>确认删除</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    确定要删除草稿 "{draft.title}" 吗？此操作无法撤销。
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>取消</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => deleteDraft(draft.id)}>删除</AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+            ) : (
+              filteredDrafts.map((draft) => (
+                <ContextMenu key={draft.id}>
+                  <ContextMenuTrigger>
+                    <div
+                      className={`p-3 rounded-lg cursor-pointer hover:bg-accent transition-colors ${
+                        currentDraft?.id === draft.id ? "bg-accent" : ""
+                      }`}
+                      onClick={() => selectDraft(draft)}
+                    >
+                      <div className="text-sm text-foreground line-clamp-3 leading-relaxed">
+                        {draft.content || "空白稿纸"}
                       </div>
-
-                      <p className="text-sm text-muted-foreground line-clamp-2">{draft.content.slice(0, 100)}...</p>
-
-                      <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <div className="flex items-center space-x-3">
-                          <span>{draft.wordCount} 字</span>
-                          <div className="flex items-center space-x-1">
-                            <Clock className="w-3 h-3" />
-                            <span>{formatTime(draft.updatedAt)}</span>
-                          </div>
-                        </div>
+                      <div className="text-xs text-muted-foreground mt-2">
+                        {formatTime(draft.updatedAt)}
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
+                  </ContextMenuTrigger>
+                  <ContextMenuContent>
+                    <ContextMenuItem 
+                      onClick={() => deleteDraftFromList(draft)}
+                      disabled={!draft.content.trim() && drafts.filter(d => !d.content.trim()).length === 1}
+                      className="text-destructive focus:text-destructive cursor-pointer hover:bg-accent hover:text-accent-foreground"
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      删除
+                    </ContextMenuItem>
+                  </ContextMenuContent>
+                </ContextMenu>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 主编辑区域卡片 */}
+      <div className="flex-1 bg-card rounded-lg shadow-sm border border-border flex flex-col">
+        {/* 编辑器内容 */}
+        <div className="flex-1 p-6">
+          {currentDraft ? (
+            <ContextMenu>
+              <ContextMenuTrigger>
+                <div className="h-full">
+                  {showPreview ? (
+                    <div className="h-full overflow-y-auto">
+                      <div className="prose-content">
+                        {renderMarkdown(editingContent || currentDraft.content)}
+                      </div>
+                    </div>
+                  ) : (
+                    <textarea
+                      ref={textareaRef}
+                      value={editingContent}
+                      onChange={(e) => handleContentChange(e.target.value)}
+                      placeholder=""
+                      className="h-full w-full text-sm leading-relaxed borderless-editor overflow-y-auto"
+                      style={{
+                        padding: 0,
+                        margin: 0,
+                        fontFamily: 'inherit',
+                        lineHeight: 'inherit',
+                        fontSize: 'inherit'
+                      }}
+                    />
+                  )}
+                </div>
+              </ContextMenuTrigger>
+              <ContextMenuContent>
+                <ContextMenuItem 
+                  onClick={createNewDraft}
+                  className="cursor-pointer hover:bg-accent hover:text-accent-foreground"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  新稿纸
+                </ContextMenuItem>
+                <ContextMenuItem 
+                  onClick={deleteDraft}
+                  disabled={!currentDraft.content.trim() && drafts.filter(draft => !draft.content.trim()).length === 1}
+                  className="text-destructive focus:text-destructive cursor-pointer hover:bg-accent hover:text-accent-foreground"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  删除
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
+          ) : (
+            <div className="h-full flex items-center justify-center text-muted-foreground">
+              选择一个稿纸开始编辑
             </div>
           )}
         </div>
-
-        {/* 编辑器区域 */}
-        <div className="lg:col-span-2">
-          {selectedDraft ? (
-            <Card className="h-full flex flex-col">
-              <CardHeader className="pb-4">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">{selectedDraft.title}</CardTitle>
-                  <div className="flex items-center space-x-2">
-                    {/* 自动保存状态 */}
-                    <div className="flex items-center space-x-1 text-xs text-muted-foreground">
-                      <Save className="w-3 h-3" />
-                      <span>
-                        {autoSaveStatus === "saved" && "已保存"}
-                        {autoSaveStatus === "saving" && "保存中..."}
-                        {autoSaveStatus === "unsaved" && "未保存"}
-                      </span>
-                    </div>
-
-                    {/* 预览切换 */}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowPreview(!showPreview)}
-                      className="flex items-center space-x-1"
-                    >
-                      {showPreview ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      <span>{showPreview ? "编辑" : "预览"}</span>
-                    </Button>
-
-                    {/* 关闭按钮 */}
-                    <Button variant="outline" size="sm" onClick={stopEditing}>
-                      关闭
-                    </Button>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-4 text-sm text-muted-foreground">
-                  <span>{selectedDraft.wordCount} 字</span>
-                  <span>创建于 {formatTime(selectedDraft.createdAt)}</span>
-                  {selectedDraft.updatedAt.getTime() !== selectedDraft.createdAt.getTime() && (
-                    <span>更新于 {formatTime(selectedDraft.updatedAt)}</span>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent className="flex-1 flex flex-col min-h-0">
-                {showPreview ? (
-                  <div className="flex-1 overflow-y-auto prose prose-sm max-w-none">
-                    {renderPreview(editingContent || selectedDraft.content)}
-                  </div>
-                ) : (
-                  <Textarea
-                    ref={textareaRef}
-                    value={editingContent}
-                    onChange={(e) => handleContentChange(e.target.value)}
-                    placeholder="开始你的创作..."
-                    className="flex-1 resize-none border-none focus:ring-0 text-sm leading-relaxed"
-                  />
-                )}
-              </CardContent>
-            </Card>
-          ) : (
-            <Card className="h-full flex items-center justify-center">
-              <CardContent>
-                <div className="text-center space-y-4">
-                  <div className="w-16 h-16 mx-auto bg-muted rounded-full flex items-center justify-center">
-                    <FileText className="w-8 h-8 text-muted-foreground" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-medium text-foreground mb-2">选择一个草稿开始编辑</h3>
-                    <p className="text-muted-foreground">从左侧列表中选择一个草稿，或创建一个新的草稿开始创作</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
       </div>
 
-      {/* 统计信息 */}
-      {drafts.length > 0 && (
-        <div className="text-center text-sm text-muted-foreground">
-          共 {drafts.length} 个草稿
-          {filteredDrafts.length !== drafts.length && ` · 显示 ${filteredDrafts.length} 个`}
-        </div>
-      )}
+      {/* 回收站按钮 */}
+      <Button
+        onClick={() => setShowRecycleBin(true)}
+        className="fixed bottom-6 right-6 rounded-full w-12 h-12 shadow-lg cursor-pointer hover:shadow-xl transition-all duration-200"
+        size="icon"
+      >
+        <Trash2 className="w-5 h-5" />
+      </Button>
+
+      {/* 回收站对话框 */}
+      <Dialog open={showRecycleBin} onOpenChange={setShowRecycleBin}>
+        <DialogContent className="max-w-5xl w-[85vw] h-[75vh] flex flex-col p-0" showCloseButton={false}>
+          <DialogHeader className="px-6 pt-4 pb-3 border-b border-border relative">
+            <DialogTitle className="text-lg">回收站</DialogTitle>
+            <DialogClose className="absolute top-4 right-6 p-1 rounded-sm cursor-pointer hover:bg-accent hover:text-accent-foreground transition-all duration-200">
+              <X className="w-4 h-4" />
+            </DialogClose>
+          </DialogHeader>
+          
+          <div className="flex flex-col flex-1 min-h-0 px-6">
+            {/* 搜索框 */}
+            <div className="relative py-3">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="搜索回收站中的稿纸..."
+                value={recycleBinSearch}
+                onChange={(e) => setRecycleBinSearch(e.target.value)}
+                className="pl-10 pr-8"
+              />
+              {recycleBinSearch && (
+                <button
+                  onClick={() => setRecycleBinSearch("")}
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1 hover:bg-accent hover:text-accent-foreground rounded-sm transition-colors cursor-pointer"
+                >
+                  <XCircle className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {/* 稿纸网格 */}
+            <div className="flex-1 overflow-y-auto pb-4">
+              {filteredRecycleBinDrafts.length === 0 ? (
+                <div className="flex items-center justify-center h-48 text-center text-muted-foreground">
+                  {recycleBinSearch ? "没有找到匹配的稿纸" : "回收站是空的"}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {filteredRecycleBinDrafts.map((draft) => (
+                    <ContextMenu key={draft.id}>
+                      <ContextMenuTrigger>
+                        <div
+                          className="flex flex-col h-36 p-3 border border-border rounded-lg bg-card hover:bg-accent hover:shadow-sm transition-all duration-200 cursor-pointer"
+                          onClick={() => previewRecycleBinDraft(draft)}
+                        >
+                          {/* 内容区域 */}
+                          <div className="flex-1 overflow-hidden min-h-0">
+                            <div className="text-sm text-foreground leading-relaxed mb-2" 
+                                 style={{ 
+                                   display: '-webkit-box',
+                                   WebkitLineClamp: 4,
+                                   WebkitBoxOrient: 'vertical',
+                                   overflow: 'hidden'
+                                 }}>
+                              {draft.content.slice(0, 100) || "空白稿纸"}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {formatTime(draft.updatedAt)}
+                            </div>
+                          </div>
+                        </div>
+                      </ContextMenuTrigger>
+                      <ContextMenuContent>
+                        <ContextMenuItem 
+                          onClick={() => restoreDraft(draft)}
+                          className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-all duration-200"
+                        >
+                          <Plus className="w-4 h-4 mr-2" />
+                          恢复
+                        </ContextMenuItem>
+                        <ContextMenuItem 
+                          onClick={() => permanentlyDeleteDraft(draft)}
+                          className="text-destructive focus:text-destructive cursor-pointer hover:bg-destructive hover:text-destructive-foreground transition-all duration-200"
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          永久删除
+                        </ContextMenuItem>
+                      </ContextMenuContent>
+                    </ContextMenu>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 稿纸预览弹窗 */}
+      <Dialog open={!!previewDraft} onOpenChange={(open) => !open && setPreviewDraft(null)}>
+        <DialogContent className="max-w-4xl w-[80vw] h-[70vh] flex flex-col p-0" showCloseButton={false}>
+          <DialogHeader className="px-6 pt-4 pb-3 border-b border-border relative">
+            <div className="flex items-center justify-between">
+              <div className="flex space-x-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    if (previewDraft) {
+                      restoreDraft(previewDraft)
+                      setPreviewDraft(null)
+                    }
+                  }}
+                  className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-all duration-200"
+                >
+                  恢复
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => {
+                    if (previewDraft) {
+                      permanentlyDeleteDraft(previewDraft)
+                      setPreviewDraft(null)
+                    }
+                  }}
+                  className="cursor-pointer hover:bg-destructive hover:text-destructive-foreground transition-all duration-200"
+                >
+                  永久删除
+                </Button>
+              </div>
+              <DialogClose className="p-1 rounded-sm cursor-pointer hover:bg-accent hover:text-accent-foreground transition-all duration-200">
+                <X className="w-4 h-4" />
+              </DialogClose>
+            </div>
+          </DialogHeader>
+          
+          <div className="flex-1 overflow-y-auto p-6">
+            {previewDraft ? (
+              <div className="prose-content">
+                {renderMarkdown(previewDraft.content)}
+              </div>
+            ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

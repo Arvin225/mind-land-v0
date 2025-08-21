@@ -35,7 +35,7 @@ export function Navigation({ activeModule, onModuleChange }: NavigationProps) {
                 variant={activeModule === item.id ? "default" : "ghost"}
                 size="sm"
                 onClick={() => onModuleChange(item.id)}
-                className="flex items-center space-x-2 px-3 py-2"
+                className="flex items-center space-x-2 px-3 py-2 cursor-pointer hover:cursor-pointer"
               >
                 <Icon className="w-4 h-4" />
                 <span className="text-sm font-medium">{item.label}</span>
@@ -71,7 +71,7 @@ export function Navigation({ activeModule, onModuleChange }: NavigationProps) {
                     onModuleChange(item.id)
                     setIsMobileMenuOpen(false)
                   }}
-                  className="w-full flex items-center justify-start space-x-2 px-3 py-2"
+                  className="w-full flex items-center justify-start space-x-2 px-3 py-2 cursor-pointer hover:cursor-pointer"
                 >
                   <Icon className="w-4 h-4" />
                   <span className="text-sm font-medium">{item.label}</span>

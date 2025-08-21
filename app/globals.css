@@ -161,3 +161,101 @@
     background: hsl(var(--muted-foreground) / 0.5);
   }
 }
+
+/* 自定义Markdown样式 */
+.prose-content {
+  @apply text-foreground;
+}
+
+.prose-content h1 {
+  @apply text-2xl font-bold mt-6 mb-4 first:mt-0 text-foreground;
+}
+
+.prose-content h2 {
+  @apply text-xl font-semibold mt-5 mb-3 first:mt-0 text-foreground;
+}
+
+.prose-content h3 {
+  @apply text-lg font-medium mt-4 mb-2 first:mt-0 text-foreground;
+}
+
+.prose-content h4 {
+  @apply text-base font-medium mt-3 mb-2 first:mt-0 text-foreground;
+}
+
+.prose-content p {
+  @apply mb-3 leading-relaxed text-foreground;
+}
+
+.prose-content ul {
+  @apply mb-3 ml-6 list-disc;
+}
+
+.prose-content ol {
+  @apply mb-3 ml-6 list-decimal;
+}
+
+.prose-content li {
+  @apply mb-1 text-foreground;
+}
+
+.prose-content blockquote {
+  @apply border-l-4 border-muted-foreground/30 pl-4 italic text-muted-foreground my-4;
+}
+
+.prose-content code {
+  @apply bg-muted px-1.5 py-0.5 rounded text-sm font-mono text-foreground;
+}
+
+.prose-content pre {
+  @apply bg-muted p-4 rounded-lg overflow-x-auto my-4;
+}
+
+.prose-content pre code {
+  @apply bg-transparent p-0;
+}
+
+.prose-content a {
+  @apply text-primary hover:underline;
+}
+
+.prose-content strong {
+  @apply font-semibold text-foreground;
+}
+
+.prose-content em {
+  @apply italic text-foreground;
+}
+
+.prose-content hr {
+  @apply border-border my-6;
+}
+
+.prose-content table {
+  @apply w-full border-collapse border border-border my-4;
+}
+
+.prose-content th,
+.prose-content td {
+  @apply border border-border px-3 py-2 text-left;
+}
+
+.prose-content th {
+  @apply bg-muted font-semibold;
+}
+
+/* 确保textarea完全无边框 */
+textarea.borderless-editor {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  resize: none !important;
+  background: transparent !important;
+}
+
+textarea.borderless-editor:focus {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  ring: none !important;
+}
